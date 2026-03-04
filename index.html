@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeMap — Travel Through History</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Georgia', serif;
+    background: #0a0a0a;
+    color: #e8e0d0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  #header {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.0) 100%);
+    pointer-events: none;
+  }
+
+  #header > * { pointer-events: auto; }
+
+  #logo {
+    font-size: 1.4rem;
+    font-weight: bold;
+    letter-spacing: 3px;
+    color: #c8b89a;
+    text-shadow: 0 0 20px rgba(200,184,154,0.5);
+    white-space: nowrap;
+  }
+
+  #search-box {
+    flex: 1;
+    max-width: 320px;
+    padding: 7px 12px;
+    background: rgba(0,0,0,0.65);
+    border: 1px solid rgba(200,184,154,0.4);
+    border-radius: 4px;
+    color: #e8e0d0;
+    font-family: Georgia, serif;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  #search-box::placeholder { color: rgba(232,224,208,0.4); }
+  #search-box:focus { border-color: rgba(200,184,154,0.8); }
+
+  #search-btn {
+    padding: 7px 16px;
+    background: rgba(200,184,154,0.15);
+    border: 1px solid rgba(200,184,154,0.5);
+    border-radius: 4px;
+    color: #c8b89a;
+    font-family: Georgia, serif;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  #search-btn:hover { background: rgba(200,184,154,0.3); }
+
+  #search-status {
+    font-size: 0.75rem;
+    color: rgba(200,184,154,0.6);
+    white-space: nowrap;
+  }
+
+  /* ── Map ── */
+  #map {
+    flex: 1;
+    width: 100%;
+    transition: filter 1.2s ease;
+  }
+
+  /* Era CSS filters applied to the tile pane */
+  #map.era-present    .leaflet-tile-pane { filter: none; transition: filter 1.2s ease; }
+  #map.era-late20     .leaflet-tile-pane { filter: sepia(20%); transition: filter 1.2s ease; }
+  #map.era-mid20      .leaflet-tile-pane { filter: sepia(50%) brightness(0.9); transition: filter 1.2s ease; }
+  #map.era-early20    .leaflet-tile-pane { filter: sepia(80%) contrast(1.1); transition: filter 1.2s ease; }
+  #map.era-historical .leaflet-tile-pane { filter: sepia(100%) grayscale(40%); transition: filter 1.2s ease; }
+
+  /* ── Time Panel ── */
+  #time-panel {
+    background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.75) 100%);
+    border-top: 1px solid rgba(200,184,154,0.2);
+    padding: 12px 20px 8px;
+    user-select: none;
+  }
+
+  #year-display {
+    text-align: center;
+    font-size: 2.8rem;
+    font-weight: bold;
+    letter-spacing: 8px;
+    color: #c8b89a;
+    text-shadow: 0 0 30px rgba(200,184,154,0.4);
+    line-height: 1;
+    margin-bottom: 2px;
+  }
+
+  #era-label {
+    text-align: center;
+    font-size: 0.8rem;
+    letter-spacing: 3px;
+    color: rgba(200,184,154,0.6);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  #slider-wrap {
+    position: relative;
+    padding: 0 4px;
+  }
+
+  #year-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    background: linear-gradient(to right, #c8b89a var(--pct, 0%), rgba(200,184,154,0.25) var(--pct, 0%));
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  #year-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #c8b89a;
+    box-shadow: 0 0 10px rgba(200,184,154,0.6);
+    cursor: grab;
+  }
+
+  #year-slider::-moz-range-thumb {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #c8b89a;
+    border: none;
+    box-shadow: 0 0 10px rgba(200,184,154,0.6);
+    cursor: grab;
+  }
+
+  #year-ticks {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    font-size: 0.65rem;
+    color: rgba(200,184,154,0.45);
+    letter-spacing: 1px;
+  }
+
+  #photo-status {
+    text-align: center;
+    font-size: 0.72rem;
+    color: rgba(200,184,154,0.5);
+    margin-top: 5px;
+    min-height: 1.1em;
+    font-style: italic;
+  }
+
+  /* ── Photo Strip ── */
+  #photo-strip-wrap {
+    background: rgba(0,0,0,0.9);
+    border-top: 1px solid rgba(200,184,154,0.15);
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.5s ease;
+  }
+
+  #photo-strip-wrap.open { max-height: 180px; }
+
+  #photo-strip {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px;
+    overflow-x: auto;
+    scroll-behavior: smooth;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(200,184,154,0.3) transparent;
+  }
+
+  #photo-strip::-webkit-scrollbar { height: 4px; }
+  #photo-strip::-webkit-scrollbar-thumb { background: rgba(200,184,154,0.3); border-radius: 2px; }
+
+  .photo-card {
+    flex-shrink: 0;
+    width: 130px;
+    cursor: pointer;
+    border: 1px solid rgba(200,184,154,0.2);
+    border-radius: 3px;
+    overflow: hidden;
+    background: #111;
+    transition: border-color 0.2s, transform 0.15s;
+  }
+
+  .photo-card:hover {
+    border-color: rgba(200,184,154,0.6);
+    transform: translateY(-2px);
+  }
+
+  .photo-card img {
+    width: 100%;
+    height: 110px;
+    object-fit: cover;
+    display: block;
+    filter: sepia(20%);
+  }
+
+  .photo-card-info {
+    padding: 4px 5px;
+  }
+
+  .photo-card-title {
+    font-size: 0.6rem;
+    color: rgba(200,184,154,0.75);
+    line-height: 1.3;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .photo-card-date {
+    font-size: 0.58rem;
+    color: rgba(200,184,154,0.45);
+    margin-top: 2px;
+  }
+
+  #photo-empty {
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    font-size: 0.75rem;
+    color: rgba(200,184,154,0.35);
+    font-style: italic;
+    height: 100%;
+    min-height: 130px;
+  }
+
+  /* ── Loading spinner ── */
+  .spinner {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 2px solid rgba(200,184,154,0.3);
+    border-top-color: #c8b89a;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Leaflet overrides ── */
+  .leaflet-control-zoom {
+    border: 1px solid rgba(200,184,154,0.3) !important;
+    border-radius: 4px !important;
+  }
+  .leaflet-control-zoom a {
+    background: rgba(0,0,0,0.75) !important;
+    color: #c8b89a !important;
+    border-bottom: 1px solid rgba(200,184,154,0.2) !important;
+  }
+  .leaflet-control-zoom a:hover { background: rgba(200,184,154,0.15) !important; }
+  .leaflet-control-attribution {
+    background: rgba(0,0,0,0.55) !important;
+    color: rgba(200,184,154,0.4) !important;
+    font-size: 0.6rem !important;
+  }
+  .leaflet-control-attribution a { color: rgba(200,184,154,0.5) !important; }
+</style>
+</head>
+<body>
+
+<!-- Header overlay -->
+<div id="header">
+  <div id="logo">TIMEMAP</div>
+  <input id="search-box" type="text" placeholder="Search a city…" autocomplete="off"/>
+  <button id="search-btn">Go</button>
+  <span id="search-status"></span>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Time control panel -->
+<div id="time-panel">
+  <div id="year-display">2025</div>
+  <div id="era-label">Present Day</div>
+  <div id="slider-wrap">
+    <input id="year-slider" type="range" min="1900" max="2025" value="2025" step="1"/>
+  </div>
+  <div id="year-ticks">
+    <span>1900</span><span>1920</span><span>1940</span><span>1960</span><span>1980</span><span>2000</span><span>2025</span>
+  </div>
+  <div id="photo-status">Slide back in time to see historical photos</div>
+</div>
+
+<!-- Photo strip -->
+<div id="photo-strip-wrap">
+  <div id="photo-strip"></div>
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const ERA_CLASSES = ['era-present','era-late20','era-mid20','era-early20','era-historical'];
+
+const ERAS = [
+  { min: 2000, max: 2025, cls: 'era-present',    label: 'Present Day'         },
+  { min: 1980, max: 1999, cls: 'era-late20',     label: 'Late 20th Century'   },
+  { min: 1950, max: 1979, cls: 'era-mid20',      label: 'Mid 20th Century'    },
+  { min: 1920, max: 1949, cls: 'era-early20',    label: 'Early 20th Century'  },
+  { min: 1900, max: 1919, cls: 'era-historical', label: 'Historical Era'       },
+];
+
+// Default: NYC
+const DEFAULT_LAT  = 40.7128;
+const DEFAULT_LNG  = -74.0060;
+const DEFAULT_ZOOM = 13;
+const DEFAULT_QUERY = 'New York City';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let currentYear  = 2025;
+let locationQuery = DEFAULT_QUERY;
+let fetchTimer   = null;
+let moveTimer    = null;
+
+// ── Map init ───────────────────────────────────────────────────────────────
+const map = L.map('map', {
+  center: [DEFAULT_LAT, DEFAULT_LNG],
+  zoom: DEFAULT_ZOOM,
+  zoomControl: false,
+});
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19,
+}).addTo(map);
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const mapEl         = document.getElementById('map');
+const slider        = document.getElementById('year-slider');
+const yearDisplay   = document.getElementById('year-display');
+const eraLabel      = document.getElementById('era-label');
+const photoStatus   = document.getElementById('photo-status');
+const photoStrip    = document.getElementById('photo-strip');
+const photoWrap     = document.getElementById('photo-strip-wrap');
+const searchBox     = document.getElementById('search-box');
+const searchBtn     = document.getElementById('search-btn');
+const searchStatus  = document.getElementById('search-status');
+
+// ── Era system ─────────────────────────────────────────────────────────────
+function getEra(year) {
+  return ERAS.find(e => year >= e.min && year <= e.max) || ERAS[0];
+}
+
+function updateEra(year) {
+  const era = getEra(year);
+  ERA_CLASSES.forEach(c => mapEl.classList.remove(c));
+  mapEl.classList.add(era.cls);
+  eraLabel.textContent = era.label;
+
+  // Update slider gradient
+  const pct = ((year - 1900) / 125) * 100;
+  slider.style.setProperty('--pct', pct + '%');
+}
+
+// ── Year display ───────────────────────────────────────────────────────────
+function setYear(year) {
+  currentYear = year;
+  yearDisplay.textContent = year;
+  updateEra(year);
+
+  if (year >= 2000) {
+    closePhotoStrip();
+    photoStatus.textContent = 'Slide back in time to see historical photos';
+  }
+}
+
+// ── Photo strip ────────────────────────────────────────────────────────────
+function openPhotoStrip() {
+  photoWrap.classList.add('open');
+}
+
+function closePhotoStrip() {
+  photoWrap.classList.remove('open');
+  photoStrip.innerHTML = '';
+}
+
+function renderPhotos(results) {
+  photoStrip.innerHTML = '';
+
+  if (!results || results.length === 0) {
+    photoStrip.innerHTML = '<div id="photo-empty">No archival photos found for this location and era.</div>';
+    openPhotoStrip();
+    return;
+  }
+
+  results.forEach(item => {
+    const thumb = item.image_url || (item.resources && item.resources[0] && item.resources[0].url + '?size=thumbnail');
+    if (!thumb) return;
+
+    const title = item.title || 'Untitled';
+    const date  = item.date  || '';
+    const link  = item.url   || '#';
+
+    const card = document.createElement('a');
+    card.className = 'photo-card';
+    card.href = link;
+    card.target = '_blank';
+    card.rel = 'noopener noreferrer';
+    card.title = title;
+
+    card.innerHTML = `
+      <img src="${escHtml(thumb)}" alt="${escHtml(title)}" loading="lazy"
+           onerror="this.parentElement.style.display='none'"/>
+      <div class="photo-card-info">
+        <div class="photo-card-title">${escHtml(title)}</div>
+        <div class="photo-card-date">${escHtml(date)}</div>
+      </div>`;
+
+    photoStrip.appendChild(card);
+  });
+
+  openPhotoStrip();
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+// ── LOC API fetch ──────────────────────────────────────────────────────────
+async function fetchPhotos(year, query) {
+  if (year >= 2000) return;
+
+  // Derive date range: ±10 years around the chosen year, clamped to 1900-1999
+  const from = Math.max(1900, year - 10);
+  const to   = Math.min(1999, year + 10);
+
+  photoStatus.innerHTML = '<span class="spinner"></span>Searching Library of Congress…';
+
+  const url = `https://www.loc.gov/search/?q=${encodeURIComponent(query)}&fo=json&fa=online-format:image&dates=${from}/${to}&at=results&c=20`;
+
+  try {
+    const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    const results = data.results || [];
+    const count   = results.length;
+
+    photoStatus.textContent = count > 0
+      ? `${count} archival photo${count !== 1 ? 's' : ''} found (${from}–${to})`
+      : `No photos found for ${query} in ${from}–${to}`;
+
+    renderPhotos(results);
+  } catch (err) {
+    console.warn('LOC fetch failed:', err);
+    photoStatus.textContent = 'Could not load photos (network issue)';
+    closePhotoStrip();
+  }
+}
+
+// ── Debounced fetch trigger ────────────────────────────────────────────────
+function scheduleFetch(delay = 800) {
+  clearTimeout(fetchTimer);
+  fetchTimer = setTimeout(() => fetchPhotos(currentYear, locationQuery), delay);
+}
+
+// ── Slider events ──────────────────────────────────────────────────────────
+slider.addEventListener('input', () => {
+  const y = parseInt(slider.value, 10);
+  setYear(y);
+  if (y < 2000) scheduleFetch(800);
+});
+
+// ── Map moveend ────────────────────────────────────────────────────────────
+map.on('moveend', () => {
+  if (currentYear >= 2000) return;
+  clearTimeout(moveTimer);
+  moveTimer = setTimeout(() => {
+    // Update query to center coordinates for LOC search
+    const c = map.getCenter();
+    locationQuery = `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`;
+    fetchPhotos(currentYear, locationQuery);
+  }, 1200);
+});
+
+// ── Nominatim search ───────────────────────────────────────────────────────
+async function geocode(query) {
+  searchStatus.innerHTML = '<span class="spinner"></span>';
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
+
+  try {
+    const resp = await fetch(url, {
+      headers: { 'Accept': 'application/json', 'User-Agent': 'TimeMapApp/1.0' }
+    });
+    const data = await resp.json();
+    if (!data.length) { searchStatus.textContent = 'Not found'; return; }
+
+    const { lat, lon, display_name } = data[0];
+    locationQuery = query;
+    searchStatus.textContent = '';
+    map.flyTo([parseFloat(lat), parseFloat(lon)], 13, { duration: 1.5 });
+
+    if (currentYear < 2000) scheduleFetch(1500);
+  } catch (err) {
+    searchStatus.textContent = 'Search error';
+    console.warn('Geocode failed:', err);
+  }
+}
+
+searchBtn.addEventListener('click', () => {
+  const q = searchBox.value.trim();
+  if (q) geocode(q);
+});
+
+searchBox.addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    const q = searchBox.value.trim();
+    if (q) geocode(q);
+  }
+});
+
+// ── Init ───────────────────────────────────────────────────────────────────
+setYear(2025);
+</script>
+</body>
+</html>
